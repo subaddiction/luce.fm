@@ -3,36 +3,39 @@
 
 #define TEST_LENGTH_SAMPLES 2048
 
+int FFTS = TEST_LENGTH_SAMPLES/2;
+
 int testCycles = 10;
 int counter = 0;
 
-
-static float32_t testOutput[TEST_LENGTH_SAMPLES/2]; 
+int ADCMax = 4096;
+int AVGBands = 4;
  
-//uint32_t M = 0;
+int GAIN = 10;
  
 /* ------------------------------------------------------------------ 
 * Global variables for FFT Bin Example 
 * ------------------------------------------------------------------- */ 
-uint32_t fftSize = 1024; 
+uint32_t fftSize = FFTS; 
 uint32_t ifftFlag = 0; 
-uint32_t doBitReverse = 1; 
+uint32_t doBitReverse = 1;
+
+static float32_t Output[TEST_LENGTH_SAMPLES/2];
  
-/* Reference index at which max energy of bin ocuurs */ 
+/* Reference index at which max energy of bin occurs */ 
 uint32_t refIndex = 213, testIndex = 0; 
 
 
 void setup() {
-  //analogReadResolution(32);
+  analogReadResolution(12);
   Serial.begin(115200);
   //Serial.println(" start program ");
   
 }
 
 void loop() {
-       
      
-       /** \example arm_fft_bin_example_f32.c */   
+      /** \example arm_fft_bin_example_f32.c */   
         
       while(counter < testCycles){
       //while(true){
@@ -43,7 +46,7 @@ void loop() {
         
         /*****
         
-        float32_t testInput_f32_10khz[2048] = 
+        float32_t input_f32_10khz[2048] = 
         {   
         -0.865129623056441, 	0.000000000000000, 	-2.655020678073846, 	0.000000000000000, 	0.600664612949661, 	0.000000000000000, 	0.080378093886515, 	0.000000000000000, 	
         -2.899160484012034, 	0.000000000000000, 	2.563004262857762, 	0.000000000000000, 	3.078328403304206, 	0.000000000000000, 	0.105906778385130, 	0.000000000000000, 	
@@ -307,26 +310,27 @@ void loop() {
         *****/
         
         
-        float32_t testInput_f32_10khz[2048];
+        float32_t input_f32_10khz[TEST_LENGTH_SAMPLES];
         int sample = 0;
         int sampleCount = 0;
         
         
-        while(sampleCount < 2048){
+        while(sampleCount < TEST_LENGTH_SAMPLES){
           sample = analogRead(A0);
           //Serial.println(sample);
-          //testInput_f32_10khz[sampleCount] = float32_t(sample);
-	  testInput_f32_10khz[sampleCount] = sample / 1024 * 10.0;
-          //testInput_f32_10khz[sampleCount] = float32_t(sample) / 32768.0;
-          //Serial.println(testInput_f32_10khz[sampleCount]);
+          //input_f32_10khz[sampleCount] = float32_t(sample);
+	  input_f32_10khz[sampleCount] = (sample * (5.00 / ADCMax) - 2.50);
+          //Serial.println(input_f32_10khz[sampleCount]);
           sampleCount++;
-          testInput_f32_10khz[sampleCount] = 0.00;
+          input_f32_10khz[sampleCount] = 0.00;
           sampleCount++;
         }
         
         
+        
+        
         /*****
-        float32_t testInput_f32_10khz[2048];
+        float32_t input_f32_10khz[2048];
         int samples[1024];
         int sample = 0;
         int sampleCount = 0;
@@ -338,8 +342,8 @@ void loop() {
         }
         
         for (short int i=0; i<1024*2; i+=2) {
-          testInput_f32_10khz[i] = float32_t(samples[i]) / 32768.0;
-          testInput_f32_10khz[i+1] = 0.0;
+          input_f32_10khz[i] = float32_t(samples[i]) / 32768.0;
+          input_f32_10khz[i+1] = 0.0;
           // complexSamples[i+1] = 0x8000; // fract15 version of zero
         }
         *****/
@@ -360,39 +364,45 @@ void loop() {
          
 	//Serial.println("step 1"); 
 	/* Process the data through the CFFT/CIFFT module */ 
-	arm_cfft_radix4_f32(&S, testInput_f32_10khz); 
+	arm_cfft_radix4_f32(&S, input_f32_10khz); 
 	//Serial.println("step 2");  
 	 
 	/* Process the data through the Complex Magnitude Module for  
 	calculating the magnitude at each bin */ 
-	arm_cmplx_mag_f32(testInput_f32_10khz, testOutput, fftSize);  
+	arm_cmplx_mag_f32(input_f32_10khz, Output, fftSize);  
 	//Serial.println("step 3");  
 	/* Calculates maxValue and returns corresponding BIN value */ 
-	//arm_max_f32(testOutput, fftSize, &maxValue, &testIndex);
+	//arm_max_f32(Output, fftSize, &maxValue, &testIndex);
        
-        int frame = 1;
+        int FFTBand = 1;
         int avCounter = 0;
         int total = 0;
-        int bands[4];
+        
+        int bands[AVGBands];
        
-        while(frame <= 1024){
-          total = total + int(testOutput[frame]);
-          //;Serial.println(total);
-          if(frame % 256 == 0){
-            bands[avCounter] = (total/256);
-            Serial.print("Band ");
+        while(FFTBand <= FFTS){
+          total = total + Output[FFTBand-1];
+          //Serial.println(total);
+          //Serial.println(Output[FFTBand]);
+          if(FFTBand % (FFTS/AVGBands) == 0){
+            bands[avCounter] = (total/AVGBands);
+            Serial.print("B");
             Serial.print(avCounter);
-            Serial.print(" average: ");
-            Serial.println(bands[avCounter]);
-            Serial.println("-----");
+            Serial.print(" ");
+            //Serial.print(" average: ");
+            Serial.print(bands[avCounter]);
+            //Serial.println("-----");
+            Serial.print("\t");
             avCounter++;
             total = 0;
           } 
             
-          frame++;
+          FFTBand++;
        }
         
         counter++;
+        Serial.println("");
+        Serial.println("-----");
         //Serial.println(millis());
      }
    
@@ -404,6 +414,6 @@ void loop() {
    Serial.println(" FFTs per second.");
    Serial.println("----------");
         
-   while(1);                             /* main function does not return */
+   while(1);
     
 }
